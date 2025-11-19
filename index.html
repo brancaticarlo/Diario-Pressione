@@ -1,181 +1,545 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FileDown, Activity, Download, Upload, Save } from 'lucide-react';
-import InputForm from './components/InputForm';
-import HistoryTable from './components/HistoryTable';
-import { BPRecord } from './types';
-import { STORAGE_KEY } from './constants';
-import { generatePDF } from './services/pdfService';
-
-const App: React.FC = () => {
-  const [records, setRecords] = useState<BPRecord[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Load data on mount
-  useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData) {
-      try {
-        setRecords(JSON.parse(savedData));
-      } catch (e) {
-        console.error("Failed to parse saved data", e);
-      }
-    }
-    setIsLoaded(true);
-  }, []);
-
-  // Save data on change
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    }
-  }, [records, isLoaded]);
-
-  const addRecord = (data: Omit<BPRecord, 'id' | 'timestamp'>) => {
-    const newRecord: BPRecord = {
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      ...data
-    };
-    setRecords(prev => [newRecord, ...prev]);
-  };
-
-  const deleteRecord = (id: string) => {
-    if (window.confirm('Sei sicuro di voler eliminare questa registrazione?')) {
-      setRecords(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
-  const handleExport = () => {
-    if (records.length === 0) {
-      alert('Nessun dato da esportare.');
-      return;
-    }
-    generatePDF(records);
-  };
-
-  const handleBackup = () => {
-    const dataStr = JSON.stringify(records, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `backup_pressione_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleRestoreClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const importedData = JSON.parse(content);
-        if (Array.isArray(importedData)) {
-            if(window.confirm(`Trovati ${importedData.length} record. Vuoi sovrascrivere i dati attuali?`)) {
-                setRecords(importedData);
-                alert("Ripristino completato con successo!");
-            }
-        } else {
-            alert("Il file non sembra contenere dati validi.");
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Diario Pressione</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f8fafc; 
+            -webkit-tap-highlight-color: transparent;
         }
-      } catch (err) {
-        console.error(err);
-        alert("Errore nella lettura del file JSON.");
-      }
-    };
-    reader.readAsText(file);
-    if (e.target) e.target.value = ''; // Reset input
-  };
+        /* Prevent auto-zoom on inputs in iOS */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+    </style>
 
-  if (!isLoaded) return null; // Prevent flash of empty content
+    <!-- React & ReactDOM (UMD) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- PDF Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.3",
+    "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^5.0.2",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root"></div>
 
-  return (
-    <div className="min-h-screen pb-12">
-      {/* Header */}
-      <header className="bg-teal-600 text-white sticky top-0 z-10 shadow-lg">
-        <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-white/20 p-2 rounded-full">
-                <Activity className="w-5 h-5" />
-            </div>
-            <h1 className="font-bold text-lg tracking-tight">Diario Pressione</h1>
-          </div>
-        </div>
-      </header>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-      {/* Main Content */}
-      <main className="max-w-md mx-auto px-4 pt-6">
-        
-        <InputForm onAdd={addRecord} />
+        // --- CONSTANTS ---
+        const STORAGE_KEY = 'bp_logger_data';
+        const SESSION_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+        const MIN_RECORDS_FOR_AVG = 3;
 
-        <div className="flex items-center justify-between mb-4 mt-8">
-          <h3 className="font-semibold text-slate-700">Storico Misurazioni</h3>
-          <span className="text-xs font-medium bg-slate-200 text-slate-600 px-2 py-1 rounded-full">
-            {records.length}
-          </span>
-        </div>
+        // --- ICONS (Inline SVGs) ---
+        const PlusCircle = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        );
+        const Activity = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        );
+        const Trash2 = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+        );
+        const Clock = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        );
+        const Calendar = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        );
+        const FileDown = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+        );
+        const Download = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+        );
+        const Upload = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        );
+        const Save = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        );
+        const HeartIcon = () => (
+             <svg className="w-3 h-3 text-rose-500 fill-current animate-pulse" viewBox="0 0 24 24">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+        );
 
-        <HistoryTable records={records} onDelete={deleteRecord} />
+        // --- PDF SERVICE ---
+        const groupRecordsIntoSessions = (records) => {
+            if (records.length === 0) return [];
+            const sorted = [...records].sort((a, b) => a.timestamp - b.timestamp);
+            const sessions = [];
+            let currentBuffer = [];
 
-        {/* Data Management Section */}
-        <div className="bg-slate-100 rounded-2xl p-4 mb-8 border border-slate-200">
-            <h3 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider flex items-center gap-2">
-                <Save className="w-4 h-4" /> Gestione Dati
-            </h3>
-            
-            <div className="flex flex-col gap-3">
-                {/* Export PDF Button - Integrated here */}
-                <button
-                    onClick={handleExport}
-                    disabled={records.length === 0}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                >
-                    <FileDown className="w-5 h-5" />
-                    Esporta Report PDF
-                </button>
+            for (const record of sorted) {
+                if (currentBuffer.length === 0) {
+                    currentBuffer.push(record);
+                    continue;
+                }
+                const firstInBatch = currentBuffer[0];
+                const timeDiff = record.timestamp - firstInBatch.timestamp;
+                if (timeDiff <= SESSION_WINDOW_MS) {
+                    currentBuffer.push(record);
+                } else {
+                    sessions.push(processBuffer(currentBuffer));
+                    currentBuffer = [record];
+                }
+            }
+            if (currentBuffer.length > 0) {
+                sessions.push(processBuffer(currentBuffer));
+            }
+            return sessions;
+        };
 
-                <div className="grid grid-cols-2 gap-3">
-                    <button 
-                        onClick={handleBackup}
-                        disabled={records.length === 0}
-                        className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+        const processBuffer = (buffer) => {
+            if (buffer.length >= MIN_RECORDS_FOR_AVG) {
+                const total = buffer.reduce((acc, r) => ({
+                    systolic: acc.systolic + r.systolic,
+                    diastolic: acc.diastolic + r.diastolic,
+                    pulse: acc.pulse + r.pulse
+                }), { systolic: 0, diastolic: 0, pulse: 0 });
+
+                return {
+                    records: buffer,
+                    avg: {
+                        systolic: Math.round(total.systolic / buffer.length),
+                        diastolic: Math.round(total.diastolic / buffer.length),
+                        pulse: Math.round(total.pulse / buffer.length)
+                    }
+                };
+            }
+            return { records: buffer };
+        };
+
+        const generatePDF = (records) => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(18);
+            doc.setTextColor(44, 62, 80);
+            doc.text("Report Pressione Arteriosa", 14, 20);
+
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generato il: ${new Date().toLocaleString('it-IT')}`, 14, 28);
+
+            const sessions = groupRecordsIntoSessions(records);
+            const tableRows = [];
+
+            sessions.forEach(session => {
+                session.records.forEach(r => {
+                    const date = new Date(r.timestamp);
+                    tableRows.push([
+                        date.toLocaleDateString('it-IT'),
+                        date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+                        r.systolic,
+                        r.diastolic,
+                        r.pulse
+                    ]);
+                });
+
+                if (session.avg) {
+                    tableRows.push([
+                        { content: 'MEDIA SESSIONE (30 min)', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [220, 252, 231], textColor: [21, 128, 61] } },
+                        { content: session.avg.systolic, styles: { fontStyle: 'bold', fillColor: [220, 252, 231], textColor: [21, 128, 61] } },
+                        { content: session.avg.diastolic, styles: { fontStyle: 'bold', fillColor: [220, 252, 231], textColor: [21, 128, 61] } },
+                        { content: session.avg.pulse, styles: { fontStyle: 'bold', fillColor: [220, 252, 231], textColor: [21, 128, 61] } },
+                    ]);
+                }
+            });
+
+            doc.autoTable({
+                startY: 35,
+                head: [['Data', 'Ora', 'Massima (mmHg)', 'Minima (mmHg)', 'Battiti (bpm)']],
+                body: tableRows,
+                theme: 'grid',
+                headStyles: { fillColor: [15, 118, 110] },
+                styles: { fontSize: 10, cellPadding: 3 },
+                alternateRowStyles: { fillColor: [248, 250, 252] }
+            });
+
+            doc.save(`report_pressione_${new Date().toISOString().slice(0,10)}.pdf`);
+        };
+
+        const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+        // --- COMPONENTS ---
+
+        const InputForm = ({ onAdd }) => {
+            const [systolic, setSystolic] = useState('');
+            const [diastolic, setDiastolic] = useState('');
+            const [pulse, setPulse] = useState('');
+
+            const systolicRef = useRef(null);
+            const diastolicRef = useRef(null);
+            const pulseRef = useRef(null);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!systolic || !diastolic || !pulse) return;
+
+                onAdd({
+                    systolic: parseInt(systolic),
+                    diastolic: parseInt(diastolic),
+                    pulse: parseInt(pulse)
+                });
+
+                setSystolic('');
+                setDiastolic('');
+                setPulse('');
+                // Reset focus to start
+                if (systolicRef.current) systolicRef.current.focus();
+            };
+
+            const handleSystolicChange = (e) => {
+                const val = e.target.value;
+                setSystolic(val);
+                if (val.length >= 3 && diastolicRef.current) {
+                    diastolicRef.current.focus();
+                }
+            };
+
+            const handleDiastolicChange = (e) => {
+                const val = e.target.value;
+                setDiastolic(val);
+                if (val.length >= 3 && pulseRef.current) {
+                    pulseRef.current.focus();
+                }
+            };
+
+            return (
+                <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-1">
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Massima</label>
+                            <input
+                                ref={systolicRef}
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={systolic}
+                                onChange={handleSystolicChange}
+                                placeholder="120"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none text-center text-lg font-bold text-slate-800"
+                            />
+                        </div>
+                        <div className="col-span-1">
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Minima</label>
+                            <input
+                                ref={diastolicRef}
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={diastolic}
+                                onChange={handleDiastolicChange}
+                                placeholder="80"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none text-center text-lg font-bold text-slate-800"
+                            />
+                        </div>
+                        <div className="col-span-1">
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Battiti</label>
+                            <div className="relative">
+                                <input
+                                    ref={pulseRef}
+                                    type="number"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={pulse}
+                                    onChange={(e) => setPulse(e.target.value)}
+                                    placeholder="70"
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none text-center text-lg font-bold text-slate-800"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={!systolic || !diastolic || !pulse}
+                        className="w-full mt-6 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md shadow-teal-600/20"
                     >
-                        <Download className="w-4 h-4" />
-                        Backup
+                        <Activity className="w-5 h-5" />
+                        Salva Misurazione
                     </button>
-                    <button 
-                        onClick={handleRestoreClick}
-                        className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                    >
-                        <Upload className="w-4 h-4" />
-                        Ripristina
-                    </button>
+                </form>
+            );
+        };
+
+        const HistoryTable = ({ records, onDelete }) => {
+            if (records.length === 0) {
+                return (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+                        <p className="text-slate-400">Nessuna misurazione registrata.</p>
+                    </div>
+                );
+            }
+
+            const sortedRecords = [...records].sort((a, b) => b.timestamp - a.timestamp);
+
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
+                                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Pressione</th>
+                                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Battiti</th>
+                                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {sortedRecords.map((record) => {
+                                    const date = new Date(record.timestamp);
+                                    return (
+                                        <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 whitespace-nowrap">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-medium text-slate-700 flex items-center gap-1">
+                                                        <Calendar className="w-3 h-3 text-slate-400" />
+                                                        {date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                                        <Clock className="w-3 h-3" />
+                                                        {date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-center whitespace-nowrap">
+                                                <div className="inline-flex items-baseline gap-1">
+                                                    <span className="text-lg font-bold text-slate-800">{record.systolic}</span>
+                                                    <span className="text-slate-400">/</span>
+                                                    <span className="text-lg font-bold text-slate-600">{record.diastolic}</span>
+                                                    <span className="text-xs text-slate-400 ml-1">mmHg</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-center whitespace-nowrap">
+                                                <div className="inline-flex items-center gap-1">
+                                                    <span className="text-lg font-bold text-rose-600">{record.pulse}</span>
+                                                    <HeartIcon />
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-right whitespace-nowrap">
+                                                <button
+                                                    onClick={() => onDelete(record.id)}
+                                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    aria-label="Elimina"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-            
-            <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept=".json" 
-                onChange={handleRestoreFile}
-            />
-            <p className="text-xs text-slate-400 mt-4 text-center">
-                Salva i tuoi dati per trasferirli su un altro dispositivo.
-            </p>
-        </div>
-      </main>
-    </div>
-  );
-};
+            );
+        };
 
-export default App;
+        // --- MAIN APP ---
+
+        const App = () => {
+            const [records, setRecords] = useState([]);
+            const [isLoaded, setIsLoaded] = useState(false);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                if (savedData) {
+                    try {
+                        setRecords(JSON.parse(savedData));
+                    } catch (e) {
+                        console.error("Failed to parse saved data", e);
+                    }
+                }
+                setIsLoaded(true);
+            }, []);
+
+            useEffect(() => {
+                if (isLoaded) {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                }
+            }, [records, isLoaded]);
+
+            const addRecord = (data) => {
+                const newRecord = {
+                    id: generateId(),
+                    timestamp: Date.now(),
+                    ...data
+                };
+                setRecords(prev => [newRecord, ...prev]);
+            };
+
+            const deleteRecord = (id) => {
+                if (window.confirm('Sei sicuro di voler eliminare questa registrazione?')) {
+                    setRecords(prev => prev.filter(r => r.id !== id));
+                }
+            };
+
+            const handleExport = () => {
+                if (records.length === 0) {
+                    alert('Nessun dato da esportare.');
+                    return;
+                }
+                generatePDF(records);
+            };
+
+            const handleBackup = () => {
+                const dataStr = JSON.stringify(records, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `backup_pressione_${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const handleRestoreClick = () => {
+                fileInputRef.current.click();
+            };
+
+            const handleRestoreFile = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        if (Array.isArray(importedData)) {
+                            if(window.confirm(`Trovati ${importedData.length} record. Vuoi sovrascrivere i dati attuali?`)) {
+                                setRecords(importedData);
+                                alert("Ripristino completato con successo!");
+                            }
+                        } else {
+                            alert("Il file non sembra contenere dati validi.");
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert("Errore nella lettura del file JSON.");
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = null; // Reset input
+            };
+
+            if (!isLoaded) return null;
+
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* Header */}
+                    <header className="bg-teal-600 text-white sticky top-0 z-10 shadow-lg">
+                        <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-white/20 p-2 rounded-full">
+                                    <Activity className="w-5 h-5" />
+                                </div>
+                                <h1 className="font-bold text-lg tracking-tight">Diario Pressione</h1>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-md mx-auto px-4 pt-6">
+                        
+                        <InputForm onAdd={addRecord} />
+
+                        <div className="flex items-center justify-between mb-4 mt-8">
+                            <h3 className="font-semibold text-slate-700">Storico Misurazioni</h3>
+                            <span className="text-xs font-medium bg-slate-200 text-slate-600 px-2 py-1 rounded-full">
+                                {records.length}
+                            </span>
+                        </div>
+
+                        <HistoryTable records={records} onDelete={deleteRecord} />
+
+                        {/* Data Management Section */}
+                        <div className="bg-slate-100 rounded-2xl p-4 mb-8 border border-slate-200">
+                            <h3 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider flex items-center gap-2">
+                                <Save className="w-4 h-4" /> Gestione Dati
+                            </h3>
+                            
+                            <div className="flex flex-col gap-3">
+                                {/* Export PDF Button - Primary Action in this section */}
+                                <button
+                                    onClick={handleExport}
+                                    disabled={records.length === 0}
+                                    className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                    <FileDown className="w-5 h-5" />
+                                    Esporta Report PDF
+                                </button>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button 
+                                        onClick={handleBackup}
+                                        disabled={records.length === 0}
+                                        className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Backup
+                                    </button>
+                                    <button 
+                                        onClick={handleRestoreClick}
+                                        className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        <Upload className="w-4 h-4" />
+                                        Ripristina
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept=".json" 
+                                onChange={handleRestoreFile}
+                            />
+                            <p className="text-xs text-slate-400 mt-4 text-center">
+                                Salva i tuoi dati per trasferirli su un altro dispositivo.
+                            </p>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
