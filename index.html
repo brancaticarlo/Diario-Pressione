@@ -2,57 +2,89 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pressione">
     <title>Diario Pressione</title>
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Icon & Manifest Injection -->
+    <script>
+        (function() {
+            const iconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="background-color:#4f46e5"><path d="M256 448l-30.16-27.13C118.7 323.04 48 258.93 48 180.25 48 116.15 98.15 66 162.25 66c36.21 0 70.97 16.88 93.75 43.72C279.03 82.88 313.79 66 350 66 414.1 66 464.25 116.15 464.25 180.25c0 78.68-70.7 142.79-177.84 240.62L256 448z" fill="#ffffff"/></svg>`;
+            const iconBlob = new Blob([iconSVG], {type: 'image/svg+xml'});
+            const iconUrl = URL.createObjectURL(iconBlob);
+            
+            const link = document.createElement('link');
+            link.rel = 'icon';
+            link.href = iconUrl;
+            document.head.appendChild(link);
+
+            const appleLink = document.createElement('link');
+            appleLink.rel = 'apple-touch-icon';
+            appleLink.href = iconUrl;
+            document.head.appendChild(appleLink);
+
+            const manifest = {
+                "name": "Diario Pressione",
+                "short_name": "Pressione",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#f8fafc",
+                "theme_color": "#4f46e5",
+                "orientation": "portrait",
+                "icons": [
+                    {
+                        "src": iconUrl,
+                        "sizes": "512x512",
+                        "type": "image/svg+xml"
+                    }
+                ]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = manifestUrl;
+            document.head.appendChild(manifestLink);
+        })();
+    </script>
     
-    <!-- Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
         body { 
             font-family: 'Outfit', sans-serif; 
-            background-color: #f1f5f9; 
+            background-color: #f8fafc; 
             -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
         }
-        /* Prevent auto-zoom on inputs in iOS */
-        input, select, textarea {
-            font-size: 16px !important;
-        }
-        .hide-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .hide-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-        }
+        input, select, textarea { font-size: 16px !important; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
     </style>
 
-    <!-- React & ReactDOM (UMD) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    
-    <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- PDF Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script type="importmap">
 {
   "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.3",
     "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^5.0.2",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.4",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0"
   }
 }
 </script>
@@ -65,29 +97,33 @@
 
         // --- CONSTANTS ---
         const STORAGE_KEY = 'bp_logger_data';
-        const SESSION_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+        const SESSION_WINDOW_MS = 30 * 60 * 1000; 
 
         // --- ICONS ---
         const IconActivity = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
         const IconTrash = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>;
-        const IconClock = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
         const IconFileText = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>;
         const IconDownload = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>;
         const IconUpload = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>;
         const IconSettings = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+        const IconShare = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>;
+        const IconHelp = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
         const IconHeart = ({ className }) => (
              <svg className={className} viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
             </svg>
         );
+        const IconX = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+        const IconSun = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>;
+        const IconMoon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
 
         // --- UTILS ---
         const getBPCategory = (sys, dia) => {
-            if (sys >= 180 || dia >= 120) return { label: "Crisi Ipertensiva", color: "bg-red-600", text: "text-red-600", border: "border-red-600" };
-            if (sys >= 140 || dia >= 90) return { label: "Ipertensione G2", color: "bg-red-500", text: "text-red-500", border: "border-red-500" };
-            if (sys >= 130 || dia >= 80) return { label: "Ipertensione G1", color: "bg-orange-500", text: "text-orange-500", border: "border-orange-500" };
-            if (sys >= 120 && dia < 80) return { label: "Elevata", color: "bg-yellow-400", text: "text-yellow-600", border: "border-yellow-400" };
-            return { label: "Normale", color: "bg-emerald-500", text: "text-emerald-600", border: "border-emerald-500" };
+            if (sys >= 180 || dia >= 120) return { label: "CRISI", color: "bg-red-600", text: "text-red-600", border: "border-red-600", desc: "Crisi Ipertensiva" };
+            if (sys >= 140 || dia >= 90) return { label: "GRADO 2", color: "bg-red-500", text: "text-red-500", border: "border-red-500", desc: "Ipertensione Grado 2" };
+            if (sys >= 130 || dia >= 80) return { label: "GRADO 1", color: "bg-orange-500", text: "text-orange-500", border: "border-orange-500", desc: "Ipertensione Grado 1" };
+            if (sys >= 120 && dia < 80) return { label: "ELEVATA", color: "bg-yellow-400", text: "text-yellow-600", border: "border-yellow-400", desc: "Pressione Elevata" };
+            return { label: "NORMALE", color: "bg-emerald-500", text: "text-emerald-600", border: "border-emerald-500", desc: "Pressione Normale" };
         };
 
         const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) 
@@ -95,7 +131,6 @@
             : Date.now().toString(36) + Math.random().toString(36).substr(2);
 
         // --- PDF GENERATION ---
-        // Keeps the logic requested: average every 3 records if within 30 mins
         const processRecordsForReport = (records) => {
             const sorted = [...records].sort((a, b) => a.timestamp - b.timestamp);
             const processed = [];
@@ -112,12 +147,11 @@
                             pulse: Math.round(group.reduce((s, r) => s + r.pulse, 0) / 3)
                         };
                         processed.push({ type: 'group', records: group, avg, timestamp: r1.timestamp });
+                        i += 3; 
                     } else {
                         processed.push({ type: 'single', record: sorted[i], timestamp: sorted[i].timestamp });
-                        processed.push({ type: 'single', record: sorted[i+1], timestamp: sorted[i+1].timestamp });
-                        processed.push({ type: 'single', record: sorted[i+2], timestamp: sorted[i+2].timestamp });
+                        i++;
                     }
-                    i += 3; 
                 } else {
                     processed.push({ type: 'single', record: sorted[i], timestamp: sorted[i].timestamp });
                     i++;
@@ -127,69 +161,133 @@
         };
 
         const generatePDF = (records) => {
+            if (records.length === 0) return;
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // Header styling
-            doc.setFillColor(67, 56, 202); // Indigo 700
+            // --- HEADER ---
+            doc.setFillColor(79, 70, 229); // Indigo 600
             doc.rect(0, 0, 210, 40, 'F');
             
+            doc.setFont("helvetica", "bold");
             doc.setFontSize(22);
             doc.setTextColor(255, 255, 255);
-            doc.text("Report Pressione Arteriosa", 14, 25);
-
+            doc.text("Diario Pressione", 14, 18);
+            
             doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
             doc.setTextColor(224, 231, 255);
-            doc.text(`Generato il: ${new Date().toLocaleString('it-IT')}`, 14, 33);
+            doc.text(`Generato il: ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT', {timeStyle:'short'})}`, 14, 26);
 
+            // Patient Line
+            doc.setDrawColor(255, 255, 255);
+            doc.setLineWidth(0.5);
+            doc.line(14, 33, 196, 33);
+            doc.setFontSize(11);
+            doc.text("Paziente: ________________________________________", 90, 31);
+
+            // --- STATS SUMMARY ---
+            const avgSys = Math.round(records.reduce((s, r) => s + r.systolic, 0) / records.length);
+            const avgDia = Math.round(records.reduce((s, r) => s + r.diastolic, 0) / records.length);
+            const maxSys = Math.max(...records.map(r => r.systolic));
+            
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(14, 45, 182, 20, 3, 3, 'FD');
+
+            doc.setTextColor(71, 85, 105);
+            doc.setFontSize(9);
+            doc.text("MEDIA GENERALE", 20, 53);
+            doc.text("PICCO MASSIMO", 85, 53);
+            doc.text("MISURAZIONI", 150, 53);
+
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text(`${avgSys}/${avgDia} mmHg`, 20, 60);
+            doc.text(`${maxSys} mmHg`, 85, 60);
+            doc.text(`${records.length}`, 150, 60);
+
+            // --- TABLE PREPARATION ---
             const processedItems = processRecordsForReport(records);
             const groups = {}; 
 
             processedItems.forEach(item => {
                 const dateObj = new Date(item.timestamp);
-                const dateKey = dateObj.toLocaleDateString('it-IT');
+                const dateKey = dateObj.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                const dateKeyCap = dateKey.charAt(0).toUpperCase() + dateKey.slice(1);
+                
                 const hour = dateObj.getHours();
                 let period = 'sera';
-                if (hour < 13) period = 'mattina';
-                else if (hour >= 13 && hour < 19) period = 'pomeriggio';
+                if (hour >= 6 && hour < 12) period = 'mattina';
+                else if (hour >= 12 && hour < 18) period = 'pomeriggio';
 
-                if (!groups[dateKey]) groups[dateKey] = { mattina: [], pomeriggio: [], sera: [] };
-                groups[dateKey][period].push(item);
+                if (!groups[dateKeyCap]) groups[dateKeyCap] = { mattina: [], pomeriggio: [], sera: [] };
+                groups[dateKeyCap][period].push(item);
             });
 
             const tableRows = [];
-            const uniqueDates = [...new Set(processedItems.map(i => new Date(i.timestamp).toLocaleDateString('it-IT')))];
+            // Sort dates by timestamp ascending (re-derive from processed items to keep order)
+            const sortedDates = [...new Set(processedItems.map(item => {
+                const d = new Date(item.timestamp).toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                return d.charAt(0).toUpperCase() + d.slice(1);
+            }))];
 
-            uniqueDates.forEach(dateKey => {
+            sortedDates.forEach(dateKey => {
                 const dayData = groups[dateKey];
                 if (!dayData) return;
                 
-                tableRows.push([{ content: dateKey, colSpan: 5, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', textColor: [51, 65, 85] } }]);
+                // Date Header
+                tableRows.push([{ 
+                    content: dateKey, 
+                    colSpan: 4, 
+                    styles: { fillColor: [241, 245, 249], fontStyle: 'bold', textColor: [51, 65, 85], halign: 'left' } 
+                }]);
 
                 const periods = [
-                    { id: 'mattina', label: 'MATTINA (fino alle 13:00)' },
-                    { id: 'pomeriggio', label: 'POMERIGGIO (13:00 - 19:00)' },
-                    { id: 'sera', label: 'SERA (dopo le 19:00)' }
+                    { id: 'mattina', label: 'MATTINA (06:00 - 12:00)' },
+                    { id: 'pomeriggio', label: 'POMERIGGIO (12:00 - 18:00)' },
+                    { id: 'sera', label: 'SERA (18:00 - 24:00)' }
                 ];
 
                 periods.forEach(p => {
                     const items = dayData[p.id];
                     if (items && items.length > 0) {
-                        tableRows.push([{ content: p.label, colSpan: 5, styles: { fillColor: [255, 255, 255], fontStyle: 'bold', textColor: [99, 102, 241], fontSize: 8, cellPadding: {top: 2, bottom: 1} } }]);
+                        tableRows.push([{ 
+                            content: p.label, 
+                            colSpan: 4, 
+                            styles: { fillColor: [255, 255, 255], fontStyle: 'bold', textColor: [99, 102, 241], fontSize: 8, cellPadding: {top: 2, bottom: 1}, border: {bottom: 0} } 
+                        }]);
 
                         items.forEach(item => {
                             if (item.type === 'single') {
                                 const r = item.record;
-                                tableRows.push(['', new Date(r.timestamp).toLocaleTimeString('it-IT', {timeStyle: 'short'}), r.systolic, r.diastolic, r.pulse]);
-                            } else {
-                                item.records.forEach(r => {
-                                    tableRows.push(['', new Date(r.timestamp).toLocaleTimeString('it-IT', {timeStyle: 'short'}), r.systolic, r.diastolic, r.pulse]);
-                                });
+                                const cat = getBPCategory(r.systolic, r.diastolic);
+                                const isAlert = cat.label !== 'NORMALE';
+                                const valStyle = isAlert ? { textColor: [220, 38, 38], fontStyle: 'bold' } : { textColor: [51, 65, 85] };
+
                                 tableRows.push([
-                                    { content: 'MEDIA (3 misurazioni)', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [5, 150, 105] } },
-                                    { content: item.avg.systolic, styles: { fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [5, 150, 105] } },
-                                    { content: item.avg.diastolic, styles: { fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [5, 150, 105] } },
-                                    { content: item.avg.pulse, styles: { fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [5, 150, 105] } },
+                                    new Date(r.timestamp).toLocaleTimeString('it-IT', {timeStyle: 'short'}), 
+                                    { content: r.systolic, styles: valStyle }, 
+                                    { content: r.diastolic, styles: valStyle }, 
+                                    r.pulse
+                                ]);
+                            } else {
+                                // Group: list individual faint, then bold average
+                                item.records.forEach((r) => {
+                                    tableRows.push([
+                                        new Date(r.timestamp).toLocaleTimeString('it-IT', {timeStyle: 'short'}), 
+                                        { content: r.systolic, styles: { textColor: [71, 85, 105] } }, 
+                                        { content: r.diastolic, styles: { textColor: [71, 85, 105] } }, 
+                                        { content: r.pulse, styles: { textColor: [71, 85, 105] } }
+                                    ]);
+                                });
+                                // Average
+                                tableRows.push([
+                                    { content: 'MEDIA MISURAZIONE', styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [21, 128, 61], halign: 'left' } },
+                                    { content: item.avg.systolic, styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [21, 128, 61] } },
+                                    { content: item.avg.diastolic, styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [21, 128, 61] } },
+                                    { content: item.avg.pulse, styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [21, 128, 61] } },
                                 ]);
                             }
                         });
@@ -198,12 +296,25 @@
             });
 
             doc.autoTable({
-                startY: 45,
-                head: [['Data', 'Ora', 'SYS (Max)', 'DIA (Min)', 'BPM']],
+                startY: 70,
+                head: [['Ora', 'Massima (SYS)', 'Minima (DIA)', 'Battiti (BPM)']],
                 body: tableRows,
                 theme: 'grid',
-                headStyles: { fillColor: [67, 56, 202] },
-                styles: { fontSize: 10, cellPadding: 3 },
+                headStyles: { fillColor: [79, 70, 229], fontSize: 9, fontStyle: 'bold', halign: 'center' },
+                styles: { fontSize: 10, cellPadding: 3, lineColor: [226, 232, 240], halign: 'center' },
+                columnStyles: {
+                    0: { cellWidth: 40 },
+                    1: { cellWidth: 50 },
+                    2: { cellWidth: 50 },
+                    3: { cellWidth: 40 }
+                },
+                didDrawPage: function (data) {
+                    const pageSize = doc.internal.pageSize;
+                    const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text("Report generato automaticamente da Diario Pressione App", 14, pageHeight - 10);
+                }
             });
 
             doc.save(`report_pressione_${new Date().toISOString().slice(0,10)}.pdf`);
@@ -211,41 +322,75 @@
 
         // --- COMPONENTS ---
 
-        // Simple SVG Line Chart
+        const InfoModal = ({ onClose }) => {
+            const ranges = [
+                { label: "Normale", sys: "< 120", dia: "< 80", color: "bg-emerald-500" },
+                { label: "Elevata", sys: "120 - 129", dia: "< 80", color: "bg-yellow-400" },
+                { label: "Ipertensione G1", sys: "130 - 139", dia: "80 - 89", color: "bg-orange-500" },
+                { label: "Ipertensione G2", sys: "≥ 140", dia: "≥ 90", color: "bg-red-500" },
+                { label: "Crisi Ipertensiva", sys: "> 180", dia: "> 120", color: "bg-red-700" },
+            ];
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+                    <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="bg-indigo-600 p-4 flex justify-between items-center">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                                <IconHelp className="w-5 h-5" /> Guida Medica
+                            </h3>
+                            <button onClick={onClose} className="text-white/80 hover:text-white"><IconX className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-5">
+                            <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+                                Classificazione basata sulle linee guida standard. Consulta sempre il tuo medico per una diagnosi.
+                            </p>
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 px-2">
+                                    <span>Categoria</span>
+                                    <span className="text-center">Max (Sys)</span>
+                                    <span className="text-right">Min (Dia)</span>
+                                </div>
+                                {ranges.map((r, i) => (
+                                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2.5 h-2.5 rounded-full ${r.color}`}></div>
+                                            <span className="font-bold text-slate-700 text-sm">{r.label}</span>
+                                        </div>
+                                        <div className="flex gap-4 text-sm font-mono text-slate-600">
+                                            <span className="w-12 text-center">{r.sys}</span>
+                                            <span className="w-12 text-right">{r.dia}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={onClose} className="w-full mt-6 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition">Chiudi</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const TrendChart = ({ records }) => {
             if (records.length < 2) return null;
-
-            // Take last 15 records, sort by time
             const data = [...records].sort((a, b) => a.timestamp - b.timestamp).slice(-15);
-            
-            const width = 100;
-            const height = 50;
-            const padding = 5;
-            
+            const width = 100, height = 50, padding = 5;
             const minVal = Math.min(...data.map(r => r.diastolic)) - 10;
             const maxVal = Math.max(...data.map(r => r.systolic)) + 10;
             const range = maxVal - minVal || 1;
-
             const getX = (index) => padding + (index / (data.length - 1)) * (width - 2 * padding);
             const getY = (val) => height - padding - ((val - minVal) / range) * (height - 2 * padding);
-
             const pointsSys = data.map((r, i) => `${getX(i)},${getY(r.systolic)}`).join(' ');
             const pointsDia = data.map((r, i) => `${getX(i)},${getY(r.diastolic)}`).join(' ');
 
             return (
-                <div className="mb-6 bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h3 className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Andamento Recente</h3>
+                <div className="mb-6 bg-white rounded-3xl p-5 shadow-lg shadow-indigo-100/50 border border-slate-100 animate-fade-in">
+                    <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Andamento Recente</h3>
                     <div className="w-full aspect-[2/1]">
                         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-                            {/* Guides */}
                             <line x1="0" y1={getY(120)} x2="100" y2={getY(120)} stroke="#e2e8f0" strokeWidth="0.5" strokeDasharray="2" />
                             <line x1="0" y1={getY(80)} x2="100" y2={getY(80)} stroke="#e2e8f0" strokeWidth="0.5" strokeDasharray="2" />
-                            
-                            {/* Lines */}
                             <polyline points={pointsSys} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             <polyline points={pointsDia} fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            
-                            {/* Dots */}
                             {data.map((r, i) => (
                                 <g key={i}>
                                     <circle cx={getX(i)} cy={getY(r.systolic)} r="1.5" fill="white" stroke="#6366f1" strokeWidth="1" />
@@ -254,43 +399,114 @@
                             ))}
                         </svg>
                     </div>
-                    <div className="flex justify-center gap-4 mt-2 text-xs font-medium">
-                        <span className="text-indigo-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500"></span> Massima</span>
-                        <span className="text-pink-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500"></span> Minima</span>
-                    </div>
                 </div>
             );
         };
 
         const StatsCard = ({ records }) => {
             if (records.length === 0) return null;
-            
-            // Average of last 7 days
-            const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const recent = records.filter(r => r.timestamp > oneWeekAgo);
-            const dataset = recent.length > 0 ? recent : records; // Fallback to all if no recent
-            
-            const avgSys = Math.round(dataset.reduce((a, b) => a + b.systolic, 0) / dataset.length);
-            const avgDia = Math.round(dataset.reduce((a, b) => a + b.diastolic, 0) / dataset.length);
-            const avgPulse = Math.round(dataset.reduce((a, b) => a + b.pulse, 0) / dataset.length);
 
-            const category = getBPCategory(avgSys, avgDia);
+            // Find latest day
+            const sorted = [...records].sort((a, b) => b.timestamp - a.timestamp);
+            const latestRecord = sorted[0];
+            const latestDate = new Date(latestRecord.timestamp);
+            const latestDateKey = latestDate.toLocaleDateString('it-IT');
+            
+            // Filter records for this specific day
+            const dayRecords = sorted.filter(r => new Date(r.timestamp).toLocaleDateString('it-IT') === latestDateKey);
+
+            // Calculate periods
+            const periods = {
+                mattina: [],
+                pomeriggio: [],
+                sera: []
+            };
+
+            dayRecords.forEach(r => {
+                const h = new Date(r.timestamp).getHours();
+                if (h >= 6 && h < 12) periods.mattina.push(r);
+                else if (h >= 12 && h < 18) periods.pomeriggio.push(r);
+                else periods.sera.push(r);
+            });
+
+            const getAvg = (arr) => {
+                if (arr.length === 0) return null;
+                const sys = Math.round(arr.reduce((acc, r) => acc + r.systolic, 0) / arr.length);
+                const dia = Math.round(arr.reduce((acc, r) => acc + r.diastolic, 0) / arr.length);
+                const pulse = Math.round(arr.reduce((acc, r) => acc + r.pulse, 0) / arr.length);
+                return { sys, dia, pulse, ...getBPCategory(sys, dia) };
+            };
+
+            const stats = {
+                mattina: getAvg(periods.mattina),
+                pomeriggio: getAvg(periods.pomeriggio),
+                sera: getAvg(periods.sera)
+            };
+
+            const isToday = latestDateKey === new Date().toLocaleDateString('it-IT');
+            const dateLabel = latestDate.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+            const capitalizedDate = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
 
             return (
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center items-center">
-                        <span className="text-xs text-slate-400 font-medium mb-1">Media Recente</span>
-                        <div className="text-xl font-bold text-slate-800">{avgSys}/{avgDia}</div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full mt-1 font-medium ${category.color.replace('bg-', 'bg-opacity-20 text-')}`}>
-                            {category.label}
-                        </span>
-                    </div>
-                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center items-center">
-                        <span className="text-xs text-slate-400 font-medium mb-1">Battiti Medi</span>
-                        <div className="text-xl font-bold text-slate-800 flex items-center gap-1">
-                            {avgPulse} <IconHeart className="w-4 h-4 text-rose-500" />
+                <div className="bg-white rounded-3xl p-5 shadow-lg shadow-indigo-100/50 border border-slate-100 mb-6 animate-fade-in relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                        <div>
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Media Giornaliera</h3>
+                            <p className="text-lg font-bold text-slate-800 capitalize">{isToday ? 'Oggi' : capitalizedDate}</p>
                         </div>
-                        <span className="text-[10px] text-slate-400 mt-1">BPM</span>
+                        <div className="bg-indigo-50 p-2 rounded-xl">
+                            <IconActivity className="w-5 h-5 text-indigo-600" />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 divide-x divide-slate-100 relative z-10">
+                        {/* Mattina */}
+                        <div className="flex flex-col items-center px-1">
+                            <div className="flex items-center gap-1 mb-2 text-amber-500">
+                                <IconSun className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Mat</span>
+                            </div>
+                            {stats.mattina ? (
+                                <div className="text-center">
+                                    <div className={`text-lg font-bold leading-none ${stats.mattina.text}`}>{stats.mattina.sys}/{stats.mattina.dia}</div>
+                                    <div className="text-[10px] text-slate-400 font-medium mt-1">{stats.mattina.pulse} bpm</div>
+                                </div>
+                            ) : (
+                                <div className="text-slate-300 font-medium text-sm py-1">--/--</div>
+                            )}
+                        </div>
+
+                        {/* Pomeriggio */}
+                        <div className="flex flex-col items-center px-1">
+                            <div className="flex items-center gap-1 mb-2 text-orange-500">
+                                <IconSun className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Pom</span>
+                            </div>
+                            {stats.pomeriggio ? (
+                                <div className="text-center">
+                                    <div className={`text-lg font-bold leading-none ${stats.pomeriggio.text}`}>{stats.pomeriggio.sys}/{stats.pomeriggio.dia}</div>
+                                    <div className="text-[10px] text-slate-400 font-medium mt-1">{stats.pomeriggio.pulse} bpm</div>
+                                </div>
+                            ) : (
+                                <div className="text-slate-300 font-medium text-sm py-1">--/--</div>
+                            )}
+                        </div>
+
+                        {/* Sera */}
+                        <div className="flex flex-col items-center px-1">
+                            <div className="flex items-center gap-1 mb-2 text-indigo-500">
+                                <IconMoon className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Sera</span>
+                            </div>
+                            {stats.sera ? (
+                                <div className="text-center">
+                                    <div className={`text-lg font-bold leading-none ${stats.sera.text}`}>{stats.sera.sys}/{stats.sera.dia}</div>
+                                    <div className="text-[10px] text-slate-400 font-medium mt-1">{stats.sera.pulse} bpm</div>
+                                </div>
+                            ) : (
+                                <div className="text-slate-300 font-medium text-sm py-1">--/--</div>
+                            )}
+                        </div>
                     </div>
                 </div>
             );
@@ -300,8 +516,6 @@
             const [systolic, setSystolic] = useState('');
             const [diastolic, setDiastolic] = useState('');
             const [pulse, setPulse] = useState('');
-            const [isExpanded, setIsExpanded] = useState(true);
-
             const systolicRef = useRef(null);
             const diastolicRef = useRef(null);
             const pulseRef = useRef(null);
@@ -309,71 +523,34 @@
             const handleSubmit = (e) => {
                 e.preventDefault();
                 if (!systolic || !diastolic || !pulse) return;
-
-                onAdd({
-                    systolic: parseInt(systolic),
-                    diastolic: parseInt(diastolic),
-                    pulse: parseInt(pulse)
-                });
-
-                setSystolic('');
-                setDiastolic('');
-                setPulse('');
+                onAdd({ systolic: parseInt(systolic), diastolic: parseInt(diastolic), pulse: parseInt(pulse) });
+                setSystolic(''); setDiastolic(''); setPulse('');
                 systolicRef.current?.focus();
             };
 
             const handleNext = (currVal, nextRef) => {
-                if (currVal.length >= 3 && nextRef.current) {
-                    nextRef.current.focus();
-                }
+                if (currVal.length >= 3 && nextRef.current) nextRef.current.focus();
             };
 
             return (
-                <div className="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 p-1 mb-8 relative z-10 -mt-10 mx-2">
+                <div className="bg-white rounded-3xl shadow-xl shadow-indigo-100/50 p-1 mb-8 relative z-10 -mt-12 mx-2 animate-fade-in">
                     <form onSubmit={handleSubmit} className="p-5">
                         <div className="grid grid-cols-3 gap-4 mb-6">
                             <div className="flex flex-col items-center">
-                                <label className="text-[11px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Massima</label>
-                                <input
-                                    ref={systolicRef}
-                                    type="number" inputMode="numeric" pattern="[0-9]*"
-                                    value={systolic}
-                                    onChange={(e) => { setSystolic(e.target.value); handleNext(e.target.value, diastolicRef); }}
-                                    placeholder="120"
-                                    className="w-full h-16 text-3xl font-bold text-center text-indigo-900 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200"
-                                />
+                                <label className="text-[10px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Massima</label>
+                                <input ref={systolicRef} type="number" inputMode="numeric" pattern="[0-9]*" value={systolic} onChange={(e) => { setSystolic(e.target.value); handleNext(e.target.value, diastolicRef); }} placeholder="120" className="w-full h-16 text-3xl font-bold text-center text-indigo-900 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200" />
                             </div>
                             <div className="flex flex-col items-center">
-                                <label className="text-[11px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Minima</label>
-                                <input
-                                    ref={diastolicRef}
-                                    type="number" inputMode="numeric" pattern="[0-9]*"
-                                    value={diastolic}
-                                    onChange={(e) => { setDiastolic(e.target.value); handleNext(e.target.value, pulseRef); }}
-                                    placeholder="80"
-                                    className="w-full h-16 text-3xl font-bold text-center text-indigo-900 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200"
-                                />
+                                <label className="text-[10px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Minima</label>
+                                <input ref={diastolicRef} type="number" inputMode="numeric" pattern="[0-9]*" value={diastolic} onChange={(e) => { setDiastolic(e.target.value); handleNext(e.target.value, pulseRef); }} placeholder="80" className="w-full h-16 text-3xl font-bold text-center text-indigo-900 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200" />
                             </div>
                             <div className="flex flex-col items-center">
-                                <label className="text-[11px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Battiti</label>
-                                <input
-                                    ref={pulseRef}
-                                    type="number" inputMode="numeric" pattern="[0-9]*"
-                                    value={pulse}
-                                    onChange={(e) => setPulse(e.target.value)}
-                                    placeholder="70"
-                                    className="w-full h-16 text-3xl font-bold text-center text-rose-600 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-rose-500 focus:bg-white outline-none transition-all placeholder:text-slate-200"
-                                />
+                                <label className="text-[10px] font-bold text-slate-400 tracking-widest mb-2 uppercase">Battiti</label>
+                                <input ref={pulseRef} type="number" inputMode="numeric" pattern="[0-9]*" value={pulse} onChange={(e) => setPulse(e.target.value)} placeholder="70" className="w-full h-16 text-3xl font-bold text-center text-rose-600 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-rose-500 focus:bg-white outline-none transition-all placeholder:text-slate-200" />
                             </div>
                         </div>
-                        
-                        <button
-                            type="submit"
-                            disabled={!systolic || !diastolic || !pulse}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold h-14 rounded-2xl shadow-md shadow-indigo-300/50 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-lg"
-                        >
-                            <span className="bg-white/20 p-1 rounded-full"><IconActivity className="w-5 h-5" /></span>
-                            Registra
+                        <button type="submit" disabled={!systolic || !diastolic || !pulse} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold h-14 rounded-2xl shadow-lg shadow-indigo-300/50 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-lg">
+                            <span className="bg-white/20 p-1 rounded-full"><IconActivity className="w-5 h-5" /></span> Registra
                         </button>
                     </form>
                 </div>
@@ -383,17 +560,15 @@
         const HistoryList = ({ records, onDelete }) => {
             if (records.length === 0) {
                 return (
-                    <div className="text-center py-16 opacity-50">
+                    <div className="text-center py-16 opacity-50 animate-fade-in">
                         <div className="bg-slate-200 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                             <IconActivity className="w-10 h-10 text-slate-400" />
                         </div>
                         <p className="text-slate-500 font-medium">Nessuna misurazione</p>
-                        <p className="text-sm text-slate-400">Inizia inserendo i tuoi valori</p>
                     </div>
                 );
             }
 
-            // Group by Date
             const grouped = useMemo(() => {
                 const groups = {};
                 records.forEach(r => {
@@ -404,46 +579,48 @@
                 return groups;
             }, [records]);
 
+            const shareRecord = (r) => {
+                const text = `📅 ${new Date(r.timestamp).toLocaleDateString('it-IT')} ${new Date(r.timestamp).toLocaleTimeString('it-IT', {timeStyle:'short'})}\n❤️ PA: ${r.systolic}/${r.diastolic} mmHg\n💓 BPM: ${r.pulse}`;
+                if (navigator.share) {
+                    navigator.share({ title: 'Pressione', text: text }).catch(console.error);
+                } else {
+                    navigator.clipboard.writeText(text);
+                    alert("Copiato negli appunti!");
+                }
+            };
+
             return (
-                <div className="space-y-6 pb-24">
+                <div className="space-y-6 pb-24 animate-fade-in">
                     {Object.keys(grouped).map(dateKey => (
-                        <div key={dateKey} className="animate-fade-in">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-2">{dateKey}</h4>
+                        <div key={dateKey}>
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 ml-2 sticky top-0 bg-slate-50/90 backdrop-blur-sm py-1 z-10">{dateKey}</h4>
                             <div className="space-y-3">
                                 {grouped[dateKey].sort((a,b) => b.timestamp - a.timestamp).map(record => {
                                     const category = getBPCategory(record.systolic, record.diastolic);
                                     return (
                                         <div key={record.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center justify-between relative overflow-hidden group">
-                                            {/* Color Indicator Bar */}
                                             <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${category.color}`}></div>
-                                            
                                             <div className="flex items-center gap-4 pl-3">
                                                 <div className="flex flex-col">
                                                     <span className="text-2xl font-bold text-slate-800 leading-none">
                                                         {record.systolic}<span className="text-sm text-slate-400 font-normal mx-0.5">/</span>{record.diastolic}
                                                     </span>
-                                                    <span className={`text-[10px] font-bold mt-1 uppercase tracking-wide ${category.text}`}>
-                                                        {category.label}
-                                                    </span>
+                                                    <span className={`text-[10px] font-bold mt-1 uppercase tracking-wide ${category.text}`}>{category.label}</span>
                                                 </div>
                                             </div>
-
-                                            <div className="flex items-center gap-6">
-                                                <div className="flex flex-col items-end">
-                                                    <div className="flex items-center gap-1 text-rose-500 font-bold text-lg">
-                                                        {record.pulse} <IconHeart className="w-3 h-3 fill-current" />
-                                                    </div>
-                                                    <span className="text-xs text-slate-400 font-medium">
-                                                        {new Date(record.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex flex-col items-end mr-2">
+                                                    <div className="flex items-center gap-1 text-rose-500 font-bold text-lg">{record.pulse} <IconHeart className="w-3 h-3 fill-current" /></div>
+                                                    <span className="text-xs text-slate-400 font-medium">{new Date(record.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
                                                 </div>
-                                                
-                                                <button 
-                                                    onClick={() => onDelete(record.id)}
-                                                    className="w-8 h-8 flex items-center justify-center rounded-full text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors"
-                                                >
-                                                    <IconTrash className="w-4 h-4" />
-                                                </button>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => shareRecord(record)} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors">
+                                                        <IconShare className="w-4 h-4" />
+                                                    </button>
+                                                    <button onClick={() => onDelete(record.id)} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors">
+                                                        <IconTrash className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -455,79 +632,42 @@
             );
         };
 
-        // --- MAIN APP ---
-
         const App = () => {
             const [records, setRecords] = useState([]);
             const [isLoaded, setIsLoaded] = useState(false);
             const [showMenu, setShowMenu] = useState(false);
+            const [showInfo, setShowInfo] = useState(false);
             const fileInputRef = useRef(null);
 
             useEffect(() => {
                 const savedData = localStorage.getItem(STORAGE_KEY);
-                if (savedData) {
-                    try {
-                        setRecords(JSON.parse(savedData));
-                    } catch (e) {
-                        console.error("Failed to parse saved data", e);
-                    }
-                }
+                if (savedData) { try { setRecords(JSON.parse(savedData)); } catch (e) { console.error(e); } }
                 setIsLoaded(true);
             }, []);
 
-            useEffect(() => {
-                if (isLoaded) {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-                }
-            }, [records, isLoaded]);
+            useEffect(() => { if (isLoaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }, [records, isLoaded]);
 
-            const addRecord = (data) => {
-                const newRecord = {
-                    id: generateId(),
-                    timestamp: Date.now(),
-                    ...data
-                };
-                setRecords(prev => [newRecord, ...prev]);
-            };
-
-            const deleteRecord = (id) => {
-                if (window.confirm('Eliminare misurazione?')) {
-                    setRecords(prev => prev.filter(r => r.id !== id));
-                }
-            };
-
-            const handleExport = () => {
-                if (records.length === 0) return alert('Nessun dato da esportare.');
-                generatePDF(records);
-                setShowMenu(false);
-            };
-
+            const addRecord = (data) => { setRecords(prev => [{ id: generateId(), timestamp: Date.now(), ...data }, ...prev]); };
+            const deleteRecord = (id) => { if (window.confirm('Eliminare misurazione?')) setRecords(prev => prev.filter(r => r.id !== id)); };
+            
+            const handleExport = () => { if (records.length === 0) return alert('Nessun dato.'); generatePDF(records); setShowMenu(false); };
             const handleBackup = () => {
-                const dataStr = JSON.stringify(records, null, 2);
-                const blob = new Blob([dataStr], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
+                const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
                 const link = document.createElement('a');
-                link.href = url;
+                link.href = URL.createObjectURL(blob);
                 link.download = `backup_pressione_${new Date().toISOString().slice(0,10)}.json`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
                 setShowMenu(false);
             };
-
             const handleRestoreFile = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     try {
-                        const importedData = JSON.parse(event.target.result);
-                        if (Array.isArray(importedData)) {
-                            if(window.confirm(`Trovati ${importedData.length} record. Sovrascrivere?`)) {
-                                setRecords(importedData);
-                            }
-                        } else alert("File non valido.");
-                    } catch (err) { alert("Errore lettura file."); }
+                        const d = JSON.parse(event.target.result);
+                        if (Array.isArray(d) && window.confirm(`Trovati ${d.length} record. Sovrascrivere?`)) setRecords(d);
+                    } catch (err) { alert("Errore file."); }
                 };
                 reader.readAsText(file);
                 e.target.value = null;
@@ -537,60 +677,50 @@
             if (!isLoaded) return null;
 
             return (
-                <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-                    {/* Decorative Background Header */}
-                    <div className="bg-gradient-to-br from-indigo-600 to-purple-700 h-48 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+                <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
+                    {/* Header */}
+                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 h-52 rounded-b-[3rem] shadow-xl shadow-indigo-200 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
                             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full"><path d="M0 100 C 20 0 50 0 100 100 Z" fill="white" /></svg>
                         </div>
-                        <div className="px-6 pt-8 pb-4 flex justify-between items-start text-white">
+                        <div className="px-6 pt-10 pb-4 flex justify-between items-start text-white relative z-10">
                             <div>
-                                <h1 className="text-2xl font-bold tracking-tight">Ciao,</h1>
-                                <p className="text-indigo-100 text-sm font-medium opacity-90">Ecco il tuo diario della salute.</p>
+                                <h1 className="text-3xl font-bold tracking-tight">Ciao,</h1>
+                                <p className="text-indigo-100 text-sm font-medium opacity-90 mt-1">Monitora la tua salute cardiaca.</p>
                             </div>
-                            <button 
-                                onClick={() => setShowMenu(!showMenu)} 
-                                className="p-2 bg-white/10 backdrop-blur-md rounded-xl hover:bg-white/20 transition"
-                            >
-                                <IconSettings className="w-6 h-6 text-white" />
-                            </button>
+                            <div className="flex gap-3">
+                                <button onClick={() => setShowInfo(true)} className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl hover:bg-white/20 transition active:scale-95"><IconHelp className="w-6 h-6 text-white" /></button>
+                                <button onClick={() => setShowMenu(!showMenu)} className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl hover:bg-white/20 transition active:scale-95"><IconSettings className="w-6 h-6 text-white" /></button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Settings Menu Overlay */}
+                    {/* Menu Dropdown */}
                     {showMenu && (
                         <>
-                            <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={() => setShowMenu(false)}></div>
-                            <div className="fixed top-20 right-4 z-50 w-64 bg-white rounded-2xl shadow-2xl p-2 animate-fade-in border border-slate-100 transform transition-all">
-                                <div className="p-3 border-b border-slate-100 mb-2">
-                                    <h3 className="font-bold text-slate-800">Gestione Dati</h3>
-                                </div>
-                                <button onClick={handleExport} className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium">
-                                    <div className="bg-indigo-50 p-1.5 rounded-lg"><IconFileText className="w-4 h-4 text-indigo-600" /></div> Report PDF
-                                </button>
-                                <button onClick={handleBackup} className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium">
-                                    <div className="bg-emerald-50 p-1.5 rounded-lg"><IconDownload className="w-4 h-4 text-emerald-600" /></div> Backup Dati
-                                </button>
-                                <button onClick={() => fileInputRef.current.click()} className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium">
-                                    <div className="bg-amber-50 p-1.5 rounded-lg"><IconUpload className="w-4 h-4 text-amber-600" /></div> Ripristina
-                                </button>
+                            <div className="fixed inset-0 bg-slate-900/20 z-40 backdrop-blur-[2px]" onClick={() => setShowMenu(false)}></div>
+                            <div className="fixed top-24 right-4 z-50 w-64 bg-white rounded-3xl shadow-2xl p-2 animate-fade-in border border-slate-100 origin-top-right">
+                                <div className="p-4 border-b border-slate-50 mb-2"><h3 className="font-bold text-slate-800 text-lg">Opzioni</h3></div>
+                                <button onClick={handleExport} className="w-full text-left px-4 py-3.5 rounded-2xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium transition-colors"><div className="bg-indigo-50 p-2 rounded-xl"><IconFileText className="w-4 h-4 text-indigo-600" /></div> Report PDF</button>
+                                <button onClick={handleBackup} className="w-full text-left px-4 py-3.5 rounded-2xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium transition-colors"><div className="bg-emerald-50 p-2 rounded-xl"><IconDownload className="w-4 h-4 text-emerald-600" /></div> Backup Dati</button>
+                                <button onClick={() => fileInputRef.current.click()} className="w-full text-left px-4 py-3.5 rounded-2xl hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium transition-colors"><div className="bg-amber-50 p-2 rounded-xl"><IconUpload className="w-4 h-4 text-amber-600" /></div> Ripristina</button>
                                 <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleRestoreFile} />
                             </div>
                         </>
                     )}
 
-                    <main className="max-w-lg mx-auto pb-10">
+                    {/* Info Modal */}
+                    {showInfo && <InfoModal onClose={() => setShowInfo(false)} />}
+
+                    <main className="max-w-lg mx-auto pb-safe-area">
                         <InputForm onAdd={addRecord} />
-                        
                         <div className="px-4 mt-6">
                             <StatsCard records={records} />
                             <TrendChart records={records} />
-                            
                             <div className="flex items-center justify-between mb-4 mt-8 pl-1">
                                 <h3 className="text-lg font-bold text-slate-800">Storico</h3>
-                                <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1 rounded-lg">{records.length}</span>
+                                <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-lg">{records.length}</span>
                             </div>
-                            
                             <HistoryList records={records} onDelete={deleteRecord} />
                         </div>
                     </main>
